@@ -1,5 +1,5 @@
 use cache_macro::cache;
-use lru_cache::LruCache;
+use lru::LruCache;
 
 use std::ops;
 

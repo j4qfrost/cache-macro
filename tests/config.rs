@@ -1,5 +1,5 @@
 use cache_macro::cache;
-use lru_cache::LruCache;
+use lru::LruCache;
 
 use std::thread;
 use std::sync::atomic::{AtomicUsize, Ordering};

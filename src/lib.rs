@@ -7,7 +7,7 @@
 //!
 //! ```rust
 //! use cache_macro::cache;
-//! use lru_cache::LruCache;
+//! use lru::LruCache;
 //!
 //! #[cache(LruCache : LruCache::new(20))]
 //! fn fib(x: u32) -> u64 {
@@ -28,13 +28,13 @@
 //! # Usage:
 //!
 //! Simply place `#[cache(CacheType : constructor)]` above your function. The function must obey a few properties
-//! to use lru_cache:
+//! to use lru:
 //!
 //! * All arguments and return values must implement `Clone`.
 //! * The function may not take `self` in any form.
 //!
 //! The `LruCache` type used must accept two generic parameters `<Args, Return>` and must support methods
-//! `get_mut(&K) -> Option<&mut V>` and `insert(K, V)`. The `lru-cache` (for LRU caching)
+//! `get_mut(&K) -> Option<&mut V>` and `put(K, V)`. The `lru-cache` (for LRU caching)
 //! and `expiring_map` (for time-to-live caching) crates currently meet these requirements.
 //!
 //! Currently, this crate only works on nightly rust. However, once the 2018 edition stabilizes as well as the
@@ -42,7 +42,7 @@
 //!
 //! # Configuration:
 //!
-//! The lru_cache macro can be configured by adding additional attributes under `#[cache(...)]`.
+//! The lru macro can be configured by adding additional attributes under `#[cache(...)]`.
 //!
 //! All configuration attributes take the form `#[cache_cfg(...)]`. The available attributes are:
 //!
@@ -57,7 +57,7 @@
 //! ### Example:
 //! ```rust
 //! use cache_macro::cache;
-//! use lru_cache::LruCache;
+//! use lru::LruCache;
 //! #[cache(LruCache : LruCache::new(20))]
 //! #[cache_cfg(ignore_args = call_count)]
 //! fn fib(x: u64, call_count: &mut u32) -> u64 {
@@ -85,7 +85,7 @@
 //!
 //! ```rust
 //! use cache_macro::cache;
-//! use lru_cache::LruCache;
+//! use lru::LruCache;
 //!
 //! #[cache(LruCache : LruCache::new(20))]
 //! #[cache_cfg(thread_local)]
@@ -116,8 +116,8 @@
 //!     use std::sync::Mutex;
 //!
 //!     lazy_static! {
-//!         static ref cache: Mutex<::lru_cache::LruCache<(u32,), u64>> =
-//!             Mutex::new(::lru_cache::LruCache::new(20usize));
+//!         static ref cache: Mutex<::lru::LruCache<(u32,), u64>> =
+//!             Mutex::new(::lru::LruCache::new(20usize));
 //!     }
 //!
 //!     let cloned_args = (x.clone(),);
@@ -129,7 +129,7 @@
 //!     drop(cache_unlocked);
 //!     let ret = __lru_base_fib(x);
 //!     let mut cache_unlocked = cache.lock().unwrap();
-//!     cache_unlocked.insert(cloned_args, ret.clone());
+//!     cache_unlocked.put(cloned_args, ret.clone());
 //!     ret
 //! }
 //!
@@ -147,8 +147,8 @@
 //!     use std::thread_local;
 //!
 //!     thread_local!(
-//!         static cache: RefCell<::lru_cache::LruCache<(u32,), u64>> =
-//!             RefCell::new(::lru_cache::LruCache::new(20usize));
+//!         static cache: RefCell<::lru::LruCache<(u32,), u64>> =
+//!             RefCell::new(::lru::LruCache::new(20usize));
 //!     );
 //!
 //!     cache.with(|c|
@@ -165,7 +165,7 @@
 //!             drop(cache_ref);
 //!
 //!             let ret = __lru_base_fib(x);
-//!             c.borrow_mut().insert(cloned_args, ret.clone());
+//!             c.borrow_mut().put(cloned_args, ret.clone());
 //!             ret
 //!         })
 //! }
@@ -214,7 +214,7 @@ impl Parse for Attr {
 pub fn cache(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr = parse_macro_input!(attr as Attr);
 
-    match lru_cache_impl(attr, item.clone()) {
+    match lru_impl(attr, item.clone()) {
         Ok(tokens) => return tokens,
         Err(e) => {
             e.emit();
@@ -224,12 +224,12 @@ pub fn cache(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 // The main entry point for the macro.
-fn lru_cache_impl(attr: Attr, item: TokenStream) -> Result<TokenStream> {
+fn lru_impl(attr: Attr, item: TokenStream) -> Result<TokenStream> {
     let mut original_fn: syn::ItemFn = match syn::parse(item.clone()) {
         Ok(ast) => ast,
         Err(e) => {
             let diag = proc_macro2::Span::call_site().unstable()
-                .error("lru_cache may only be used on functions");
+                .error("lru may only be used on functions");
             return Err(DiagnosticError::new_with_syn_error(diag, e));
         }
     };
@@ -321,7 +321,7 @@ fn build_tls_cache_body(full_cache_type: &syn::Type, cache_new: &syn::Expr,
                 drop(cache_ref);
 
                 let ret = #inner_fn_call;
-                c.borrow_mut().insert(cloned_args, ret.clone());
+                c.borrow_mut().put(cloned_args, ret.clone());
                 ret
             })
         }
@@ -355,7 +355,7 @@ fn build_mutex_cache_body(full_cache_type: &syn::Type, cache_new: &syn::Expr,
 
             let ret = #inner_fn_call;
             let mut cache_unlocked = cache.lock().unwrap();
-            cache_unlocked.insert(cloned_args, ret.clone());
+            cache_unlocked.put(cloned_args, ret.clone());
             ret
         }
     }
@@ -409,12 +409,12 @@ fn get_args_and_types(f: &syn::ItemFn, config: &config::Config) ->
         match input {
             syn::FnArg::SelfValue(p) => {
                 let diag = p.span().unstable()
-                    .error("`self` arguments are currently unsupported by lru_cache");
+                    .error("`self` arguments are currently unsupported by lru");
                 return Err(DiagnosticError::new(diag));
             }
             syn::FnArg::SelfRef(p) => {
                 let diag = p.span().unstable()
-                    .error("`&self` arguments are currently unsupported by lru_cache");
+                    .error("`&self` arguments are currently unsupported by lru");
                 return Err(DiagnosticError::new(diag));
             }
             syn::FnArg::Captured(arg_captured) => {
@@ -453,12 +453,12 @@ fn get_args_and_types(f: &syn::ItemFn, config: &config::Config) ->
             },
             syn::FnArg::Inferred(p) => {
                 let diag = p.span().unstable()
-                    .error("inferred arguments are currently unsupported by lru_cache");
+                    .error("inferred arguments are currently unsupported by lru");
                 return Err(DiagnosticError::new(diag));
             }
             syn::FnArg::Ignored(p) => {
                 let diag = p.span().unstable()
-                    .error("ignored arguments are currently unsupported by lru_cache");
+                    .error("ignored arguments are currently unsupported by lru");
                 return Err(DiagnosticError::new(diag));
             }
         }
